@@ -12,7 +12,7 @@ Model name is converted to lowercase for the collection name:
 """
 
 from pydantic import BaseModel, Field, EmailStr
-from typing import Optional
+from typing import Optional, List
 
 # Example schemas (replace with your own):
 
@@ -49,3 +49,38 @@ class ContactMessage(BaseModel):
     message: str = Field(..., min_length=10, max_length=5000, description="Message body")
     company: Optional[str] = Field(None, max_length=200, description="Company name (optional)")
     phone: Optional[str] = Field(None, max_length=50, description="Phone or WhatsApp (optional)")
+
+# Site settings to drive editable content across the website
+class SiteSettings(BaseModel):
+    """Editable site-wide settings (single-document collection: "sitesettings")."""
+    hero_title: str = Field("INNOVATE. BUILD. TRANSFORM WITH AXIOM.")
+    hero_subtitle: str = Field("We design smart digital experiences that move businesses forward.")
+    whatsapp_number: Optional[str] = Field(None, description="E.164 phone number for WhatsApp links")
+    contact_email: Optional[EmailStr] = None
+    address_line: Optional[str] = None
+    city: Optional[str] = None
+    country: Optional[str] = None
+    stat_projects: Optional[int] = Field(0, ge=0)
+    stat_clients: Optional[int] = Field(0, ge=0)
+    stat_awards: Optional[int] = Field(0, ge=0)
+    theme_default_dark: bool = Field(True)
+
+# Portfolio projects
+class Project(BaseModel):
+    """Portfolio projects (collection: "project")."""
+    title: str
+    tag: str = Field(..., description="Category like Web, AI, Mobile, Branding")
+    image_url: str = Field(..., description="Cover image URL")
+    description: Optional[str] = None
+    case_study_url: Optional[str] = None
+    featured: bool = Field(False)
+    order: Optional[int] = Field(None, ge=0)
+
+class ProjectUpdate(BaseModel):
+    title: Optional[str] = None
+    tag: Optional[str] = None
+    image_url: Optional[str] = None
+    description: Optional[str] = None
+    case_study_url: Optional[str] = None
+    featured: Optional[bool] = None
+    order: Optional[int] = Field(None, ge=0)

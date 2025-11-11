@@ -2,10 +2,11 @@ import os
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import ValidationError
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional
+from bson import ObjectId
 
-from schemas import ContactMessage
-from database import create_document
+from schemas import ContactMessage, SiteSettings, Project, ProjectUpdate
+from database import create_document, get_documents
 
 app = FastAPI()
 
@@ -36,6 +37,99 @@ def submit_contact(payload: Dict[str, Any]):
     try:
         inserted_id = create_document("contactmessage", data)
         return {"status": "ok", "id": inserted_id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Admin: Site settings (single doc)
+@app.get("/api/admin/settings")
+def get_settings():
+    try:
+        items = get_documents("sitesettings", {}, limit=1)
+        if items:
+            doc = items[0]
+            doc["_id"] = str(doc.get("_id"))
+            return doc
+        # if not exists, create defaults
+        default = SiteSettings().model_dump()
+        create_document("sitesettings", default)
+        return default
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/admin/settings")
+def upsert_settings(payload: Dict[str, Any]):
+    from database import db
+    try:
+        data = SiteSettings(**payload)
+    except ValidationError as e:
+        raise HTTPException(status_code=422, detail=e.errors())
+    try:
+        if db is None:
+            raise Exception("Database not available")
+        col = db["sitesettings"]
+        existing = col.find_one({})
+        if existing:
+            col.update_one({"_id": existing["_id"]}, {"$set": data.model_dump()})
+            return {"status": "updated"}
+        else:
+            _id = create_document("sitesettings", data)
+            return {"status": "created", "id": _id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Admin: Projects CRUD
+@app.get("/api/admin/projects")
+def list_projects(tag: Optional[str] = None):
+    try:
+        filter_q = {"tag": tag} if tag else {}
+        items = get_documents("project", filter_q)
+        for it in items:
+            it["_id"] = str(it.get("_id"))
+        return items
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/admin/projects")
+def create_project(payload: Dict[str, Any]):
+    try:
+        data = Project(**payload)
+    except ValidationError as e:
+        raise HTTPException(status_code=422, detail=e.errors())
+    try:
+        _id = create_document("project", data)
+        return {"status": "created", "id": _id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.put("/api/admin/projects/{project_id}")
+def update_project(project_id: str, payload: Dict[str, Any]):
+    from database import db
+    try:
+        data = ProjectUpdate(**payload)
+    except ValidationError as e:
+        raise HTTPException(status_code=422, detail=e.errors())
+    try:
+        if db is None:
+            raise Exception("Database not available")
+        col = db["project"]
+        res = col.update_one({"_id": ObjectId(project_id)}, {"$set": {k: v for k, v in data.model_dump().items() if v is not None}})
+        if res.matched_count == 0:
+            raise HTTPException(status_code=404, detail="Project not found")
+        return {"status": "updated"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/admin/projects/{project_id}")
+def delete_project(project_id: str):
+    from database import db
+    try:
+        if db is None:
+            raise Exception("Database not available")
+        col = db["project"]
+        res = col.delete_one({"_id": ObjectId(project_id)})
+        if res.deleted_count == 0:
+            raise HTTPException(status_code=404, detail="Project not found")
+        return {"status": "deleted"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
